@@ -40,6 +40,8 @@ class Client:
         request = {'command': 'login', 'username': username, 'password': password}
         self.socket.sendall(pickle.dumps(request))
         response = self.receive_data()
+        if not response:
+            return False, "No response from server"
         return response['status'] == 'authenticated', response['message']
 
     def send_message(self, recipient, message):
@@ -49,12 +51,14 @@ class Client:
         request = {'command': 'send_message', 'recipient': recipient, 'message': encoded_message}
         self.socket.sendall(pickle.dumps(request))
         response = self.receive_data()
+        if not response:
+            return False, "No response from server"
         return response['status'] == 'delivered', response['message']
 
     def receive_data(self):
         data = self.socket.recv(4096)
         if not data:
-            return {'status': 'error', 'message': 'No data received from server'}
+            return None
         return pickle.loads(data)
 
 def run_client(username, password, recipient=None, message=None):
