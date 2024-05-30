@@ -1,110 +1,96 @@
-# client_gui.py
 import tkinter as tk
-from tkinter import messagebox, scrolledtext
+from tkinter import ttk, scrolledtext, messagebox
 from client import Client
+import threading
 
 class LoginWindow:
     def __init__(self, root):
         self.root = root
         self.root.title("Login")
-        self.root.geometry("300x200")
         self.client = Client()
 
-        tk.Label(root, text="Username:").pack(pady=5)
-        self.username_entry = tk.Entry(root)
-        self.username_entry.pack(pady=5)
+        self.username_label = ttk.Label(root, text="Username:")
+        self.username_label.grid(row=0, column=0, padx=10, pady=10)
+        self.username_entry = ttk.Entry(root)
+        self.username_entry.grid(row=0, column=1, padx=10, pady=10)
 
-        tk.Label(root, text="Password:").pack(pady=5)
-        self.password_entry = tk.Entry(root, show="*")
-        self.password_entry.pack(pady=5)
+        self.password_label = ttk.Label(root, text="Password:")
+        self.password_label.grid(row=1, column=0, padx=10, pady=10)
+        self.password_entry = ttk.Entry(root, show="*")
+        self.password_entry.grid(row=1, column=1, padx=10, pady=10)
 
-        tk.Button(root, text="Login", command=self.login).pack(pady=5)
-        tk.Button(root, text="Register", command=self.register_window).pack(pady=5)
+        self.login_button = ttk.Button(root, text="Login", command=self.login)
+        self.login_button.grid(row=2, column=0, columnspan=2, pady=10)
 
-    def register_window(self):
-        register_window = tk.Toplevel(self.root)
-        register_window.title("Register")
-        register_window.geometry("300x200")
-
-        tk.Label(register_window, text="Username:").pack(pady=5)
-        self.reg_username_entry = tk.Entry(register_window)
-        self.reg_username_entry.pack(pady=5)
-
-        tk.Label(register_window, text="Password:").pack(pady=5)
-        self.reg_password_entry = tk.Entry(register_window, show="*")
-        self.reg_password_entry.pack(pady=5)
-
-        tk.Button(register_window, text="Register", command=self.register).pack(pady=5)
+        self.register_button = ttk.Button(root, text="Register", command=self.register)
+        self.register_button.grid(row=3, column=0, columnspan=2, pady=10)
 
     def login(self):
         username = self.username_entry.get()
         password = self.password_entry.get()
-        if username and password:
-            success, message = self.client.login(username, password)
-            if success:
-                self.root.destroy()
-                chat_window = tk.Tk()
-                ChatApp(chat_window, username)
-                chat_window.mainloop()
-            else:
-                messagebox.showerror("Login Error", message)
+        success, message = self.client.login(username, password)
+        if success:
+            self.open_chat_window()
         else:
-            messagebox.showwarning("Input Error", "Please enter a username and password.")
+            messagebox.showerror("Login Failed", message)
 
     def register(self):
-        username = self.reg_username_entry.get()
-        password = self.reg_password_entry.get()
-        if username and password:
-            success, message = self.client.register(username, password)
-            if success:
-                messagebox.showinfo("Registration Success", message)
-            else:
-                messagebox.showerror("Registration Error", message)
+        username = self.username_entry.get()
+        password = self.password_entry.get()
+        success, message = self.client.register(username, password)
+        if success:
+            messagebox.showinfo("Registration Successful", message)
         else:
-            messagebox.showwarning("Input Error", "Please enter a username and password.")
+            messagebox.showerror("Registration Failed", message)
 
-class ChatApp:
-    def __init__(self, root, username):
-        self.client = Client()
-        self.username = username
-        self.root = root
-        self.root.title("Chat Application")
+    def open_chat_window(self):
+        self.root.destroy()
+        ChatWindow(self.client)
 
-        self.create_chat_window()
+class ChatWindow:
+    def __init__(self, client):
+        self.client = client
+        self.root = tk.Tk()
+        self.root.title("Chat")
 
-    def create_chat_window(self):
-        self.chat_frame = tk.Frame(self.root)
-        self.chat_frame.pack(pady=10)
+        self.users_listbox = tk.Listbox(self.root)
+        self.users_listbox.grid(row=0, column=0, padx=10, pady=10)
 
-        self.chat_box = scrolledtext.ScrolledText(self.chat_frame, wrap=tk.WORD, state=tk.DISABLED)
-        self.chat_box.pack(padx=10, pady=10)
+        self.chat_display = scrolledtext.ScrolledText(self.root)
+        self.chat_display.grid(row=0, column=1, padx=10, pady=10)
 
-        self.msg_entry = tk.Entry(self.chat_frame, width=50)
-        self.msg_entry.pack(side=tk.LEFT, padx=10)
-        self.send_btn = tk.Button(self.chat_frame, text="Send", command=self.send_message)
-        self.send_btn.pack(side=tk.LEFT)
+        self.message_entry = ttk.Entry(self.root)
+        self.message_entry.grid(row=1, column=1, padx=10, pady=10)
 
-        self.recipient_entry = tk.Entry(self.chat_frame, width=20)
-        self.recipient_entry.pack(side=tk.LEFT, padx=10)
-        self.recipient_entry.insert(0, "Recipient")
+        self.send_button = ttk.Button(self.root, text="Send", command=self.send_message)
+        self.send_button.grid(row=2, column=1, padx=10, pady=10)
+
+        self.update_users()
+        self.update_messages()
+
+        self.root.mainloop()
+
+    def update_users(self):
+        users = self.client.get_user_list()
+        self.users_listbox.delete(0, tk.END)
+        for user in users:
+            self.users_listbox.insert(tk.END, user)
+        self.root.after(5000, self.update_users)  # Update user list every 5 seconds
+
+    def update_messages(self):
+        for message in self.client.messages:
+            self.chat_display.insert(tk.END, f"{message['sender']}: {message['message']}\n")
+        self.client.messages.clear()
+        self.root.after(1000, self.update_messages)  # Check for new messages every second
 
     def send_message(self):
-        recipient = self.recipient_entry.get()
-        message = self.msg_entry.get()
+        recipient = self.users_listbox.get(tk.ACTIVE)
+        message = self.message_entry.get()
         if recipient and message:
-            success, response = self.client.send_message(recipient, message)
-            if success:
-                self.chat_box.configure(state=tk.NORMAL)
-                self.chat_box.insert(tk.END, f"You to {recipient}: {message}\n")
-                self.chat_box.configure(state=tk.DISABLED)
-                self.msg_entry.delete(0, tk.END)
-            else:
-                messagebox.showerror("Message Error", response)
-        else:
-            messagebox.showwarning("Input Error", "Please enter a recipient and message.")
-
+            self.client.send_message(recipient, message)
+            self.message_entry.delete(0, tk.END)
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = LoginWindow(root)
+    login_window = LoginWindow(root)
     root.mainloop()

@@ -1,8 +1,8 @@
-# client.py
 import socket
 import pickle
 import logging
 import argparse
+import threading
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -10,7 +10,9 @@ class Client:
     def __init__(self, host='127.0.0.1', port=65432):
         self.host = host
         self.port = port
-        self.socket = None  # Initialize socket as None
+        self.socket = None
+        self.username = None
+        self.messages = []
 
     def connect(self):
         if not self.socket:
@@ -21,10 +23,16 @@ class Client:
                 return True
             except Exception as e:
                 logging.error(f"Error connecting to server: {e}")
+                self.socket = None
                 return False
         else:
             logging.info("Already connected")
             return True
+
+    def close(self):
+        if self.socket:
+            self.socket.close()
+            self.socket = None
 
     def register(self, username, password):
         if not self.connect():
@@ -32,55 +40,68 @@ class Client:
         request = {'command': 'register', 'username': username, 'password': password}
         self.socket.sendall(pickle.dumps(request))
         response = self.receive_data()
+        if response is None:
+            return False, "No response from server"
         return response['status'] == 'registered', response['message']
 
     def login(self, username, password):
         if not self.connect():
             return False, "Failed to connect to server"
         request = {'command': 'login', 'username': username, 'password': password}
-        self.socket.sendall(pickle.dumps(request))
-        response = self.receive_data()
-        if not response:
-            return False, "No response from server"
-        return response['status'] == 'authenticated', response['message']
+        try:
+            self.socket.sendall(pickle.dumps(request))
+            response = self.receive_data()
+            if response is None:
+                return False, "No response from server"
+            if response['status'] == 'authenticated':
+                self.username = username
+                self.start_receiving_messages()
+            return response['status'] == 'authenticated', response['message']
+        finally:
+            self.close()
 
     def send_message(self, recipient, message):
         if not self.connect():
             return False, "Failed to connect to server"
-        encoded_message = hamming_encode(message)
-        request = {'command': 'send_message', 'recipient': recipient, 'message': encoded_message}
+        request = {'command': 'send_message', 'recipient': recipient, 'message': message, 'sender': self.username}
         self.socket.sendall(pickle.dumps(request))
         response = self.receive_data()
-        if not response:
+        if response is None:
             return False, "No response from server"
         return response['status'] == 'delivered', response['message']
 
     def receive_data(self):
-        data = self.socket.recv(4096)
-        if not data:
+        try:
+            data = self.socket.recv(1024)
+            if not data:
+                return None
+            return pickle.loads(data)
+        except Exception as e:
+            logging.error(f"Error receiving data: {e}")
             return None
-        return pickle.loads(data)
 
-def run_client(username, password, recipient=None, message=None):
-    client = Client()
-    success, response = client.login(username, password)
-    if not success:
-        logging.error(response)
-        return
-    logging.info(response)
-    if recipient and message:
-        success, response = client.send_message(recipient, message)
-        if success:
-            logging.info(response)
-        else:
-            logging.error(response)
+    def get_user_list(self):
+        if not self.connect():
+            return []
+        request = {'command': 'get_users'}
+        self.socket.sendall(pickle.dumps(request))
+        response = self.receive_data()
+        if response is None or response['status'] != 'success':
+            return []
+        return response['users']
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Chat Client")
-    parser.add_argument("--username", type=str, required=True, help="Your username")
-    parser.add_argument("--password", type=str, required=True, help="Your password")
-    parser.add_argument("--recipient", type=str, help="Recipient username")
-    parser.add_argument("--message", type=str, help="Message to send")
-    args = parser.parse_args()
+    def start_receiving_messages(self):
+        thread = threading.Thread(target=self.receive_messages)
+        thread.daemon = True
+        thread.start()
 
-    run_client(args.username, args.password, args.recipient, args.message)
+    def receive_messages(self):
+        while True:
+            try:
+                data = self.socket.recv(1024)
+                if data:
+                    message = pickle.loads(data)
+                    self.messages.append(message)
+            except Exception as e:
+                logging.error(f"Error receiving messages: {e}")
+                break
