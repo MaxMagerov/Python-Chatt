@@ -8,17 +8,23 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 class Client:
     def __init__(self, host='127.0.0.1', port=65432):
-            self.host = host
-            self.port = port
-            self.socket = None  # Initialize socket as None
-        
+        self.host = host
+        self.port = port
+        self.socket = None  # Initialize socket as None
 
     def connect(self):
-            if not self.socket:
-                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if not self.socket:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
                 self.socket.connect((self.host, self.port))
-            else:
-                logging.info("Already connected")
+                logging.info("Connected to server")
+                return True
+            except Exception as e:
+                logging.error(f"Error connecting to server: {e}")
+                return False
+        else:
+            logging.info("Already connected")
+            return True
 
     def register(self, username, password):
         if not self.connect():
@@ -29,10 +35,11 @@ class Client:
         return response['status'] == 'registered', response['message']
 
     def login(self, username, password):
-        self.connect()  # Ensure connection is established
+        if not self.connect():
+            return False, "Failed to connect to server"
         request = {'command': 'login', 'username': username, 'password': password}
         self.socket.sendall(pickle.dumps(request))
-        response = pickle.loads(self.socket.recv(1024))
+        response = self.receive_data()
         return response['status'] == 'authenticated', response['message']
 
     def send_message(self, recipient, message):
