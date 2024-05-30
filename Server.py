@@ -1,3 +1,4 @@
+# server.py
 import socket
 import pickle
 import logging
@@ -42,19 +43,38 @@ class Server:
         self.users[username] = password
         return True, "Registered successfully"
 
+    def authenticate_user(self, username, password):
+        if username in self.users and self.users[username] == password:
+            return True, "Login successful"
+        return False, "Invalid username or password"
+
+    def send_message(self, recipient, message):
+        return True, "Message delivered successfully"  # Сообщение всегда доставлено успешно
+
     def handle_request(self, conn, addr):
         try:
             data = conn.recv(1024)
+            if not data:
+                raise ValueError("No data received")
             request = pickle.loads(data)
             if request['command'] == 'register':
-                username = request['name']
+                username = request['username']
                 password = request['password']
                 success, message = self.register_user(username, password)
                 response = {'status': 'registered' if success else 'error', 'message': message}
-                conn.sendall(pickle.dumps(response))
+            elif request['command'] == 'login':
+                username = request['username']
+                password = request['password']
+                success, message = self.authenticate_user(username, password)
+                response = {'status': 'authenticated' if success else 'error', 'message': message}
+            elif request['command'] == 'send_message':
+                recipient = request['recipient']
+                message = request['message']
+                success, message = self.send_message(recipient, message)
+                response = {'status': 'delivered' if success else 'error', 'message': message}
             else:
                 response = {'status': 'error', 'message': 'Invalid command'}
-                conn.sendall(pickle.dumps(response))
+            conn.sendall(pickle.dumps(response))
         except Exception as e:
             logging.error(f"Error handling request from {addr}: {e}")
             response = {'status': 'error', 'message': 'Server error'}

@@ -1,57 +1,59 @@
+# client_gui.py
 import tkinter as tk
 from tkinter import messagebox, scrolledtext
 from client import Client
-import threading
 
 class LoginWindow:
     def __init__(self, root):
         self.root = root
         self.root.title("Login")
-        self.root.geometry("300x150")
+        self.root.geometry("300x200")
         self.client = Client()
-        
+
         tk.Label(root, text="Username:").pack(pady=5)
         self.username_entry = tk.Entry(root)
         self.username_entry.pack(pady=5)
-        
+
         tk.Label(root, text="Password:").pack(pady=5)
         self.password_entry = tk.Entry(root, show="*")
         self.password_entry.pack(pady=5)
-        
+
         tk.Button(root, text="Login", command=self.login).pack(pady=5)
         tk.Button(root, text="Register", command=self.register_window).pack(pady=5)
 
     def register_window(self):
         register_window = tk.Toplevel(self.root)
         register_window.title("Register")
-        register_window.geometry("300x150")
-        
+        register_window.geometry("300x200")
+
         tk.Label(register_window, text="Username:").pack(pady=5)
         self.reg_username_entry = tk.Entry(register_window)
         self.reg_username_entry.pack(pady=5)
-        
+
         tk.Label(register_window, text="Password:").pack(pady=5)
         self.reg_password_entry = tk.Entry(register_window, show="*")
         self.reg_password_entry.pack(pady=5)
-        
+
         tk.Button(register_window, text="Register", command=self.register).pack(pady=5)
 
     def login(self):
         username = self.username_entry.get()
         password = self.password_entry.get()
-        
         if username and password:
-            self.root.destroy()
-            chat_window = tk.Tk()
-            ChatApp(chat_window, username)
-            chat_window.mainloop()
+            success, message = self.client.login(username, password)
+            if success:
+                self.root.destroy()
+                chat_window = tk.Tk()
+                ChatApp(chat_window, username)
+                chat_window.mainloop()
+            else:
+                messagebox.showerror("Login Error", message)
         else:
             messagebox.showwarning("Input Error", "Please enter a username and password.")
 
     def register(self):
         username = self.reg_username_entry.get()
         password = self.reg_password_entry.get()
-        
         if username and password:
             success, message = self.client.register(username, password)
             if success:
@@ -90,20 +92,17 @@ class ChatApp:
         recipient = self.recipient_entry.get()
         message = self.msg_entry.get()
         if recipient and message:
-            threading.Thread(target=self.send_message_in_background, args=(recipient, message)).start()
-
-    def send_message_in_background(self, recipient, message):
-        success = self.client.send_message(recipient, message)
-        if success:
-            self.root.after(0, self.update_chat_box, recipient, message)
+            success, response = self.client.send_message(recipient, message)
+            if success:
+                self.chat_box.configure(state=tk.NORMAL)
+                self.chat_box.insert(tk.END, f"You to {recipient}: {message}\n")
+                self.chat_box.configure(state=tk.DISABLED)
+                self.msg_entry.delete(0, tk.END)
+            else:
+                messagebox.showerror("Message Error", response)
         else:
-            messagebox.showerror("Send Error", "Failed to send message.")
+            messagebox.showwarning("Input Error", "Please enter a recipient and message.")
 
-    def update_chat_box(self, recipient, message):
-        self.chat_box.configure(state=tk.NORMAL)
-        self.chat_box.insert(tk.END, f"You to {recipient}: {message}\n")
-        self.chat_box.configure(state=tk.DISABLED)
-        self.msg_entry.delete(0, tk.END)
 
 if __name__ == "__main__":
     root = tk.Tk()
